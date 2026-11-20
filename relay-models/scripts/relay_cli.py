@@ -68,8 +68,11 @@ def merge_model_match(old_re, models):
     return "^(?:" + "|".join(sorted(alt)) + ")$"
 
 
-def upsert_relay_template(builtin, tid, name, api_type, base, models, values):
-    """在 zcode-builtin.json dict 里 upsert 模板+模板模型规则+站点规则。"""
+def upsert_relay_template(builtin, tid, name, api_type, base, models, values,
+                          enabled_ids=None):
+    """在 zcode-builtin.json dict 里 upsert 模板+模板模型规则+站点规则。
+
+    enabled_ids:默认开启的模型(= 供应商已启用的 modelOrder);其余模板模型默认关闭。"""
     c = builtin["config"]
     trules = c["providerConfigRules"]["templateRules"]
     entry = None
@@ -94,9 +97,10 @@ def upsert_relay_template(builtin, tid, name, api_type, base, models, values):
     mc = c["modelConfigRules"]
     tmr = mc["templateModelRules"]
     tmr[:] = [r for r in tmr if r.get("templateId") != tid]
+    enabled_set = set(enabled_ids or [])
     for mid in models:
         tmr.append({"templateId": tid, "modelId": mid,
-                    "config": {"enabled": True}})
+                    "config": {"enabled": mid in enabled_set}})
 
     sr = mc["providerSiteRules"]
     base_re = regex_escape(base) + r"/?"
@@ -182,7 +186,8 @@ def cmd_sync_template(args):
         try:
             bp = Path(p)
             d = load_config(bp)
-            upsert_relay_template(d, tid, name, api_type, base, models, values)
+            upsert_relay_template(d, tid, name, api_type, base, models, values,
+                                  enabled_ids=conf.get("modelOrder", []))
             d["revision"] = int(d.get("revision", 0)) + 1
             bak = backup(bp)
             save_config(bp, d)

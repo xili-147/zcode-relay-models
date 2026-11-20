@@ -1,6 +1,6 @@
 {
   "name": "relay-models",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "自动拉取中转站 /models 模型列表,交互式添加/更新 ZCode 供应商与思考强度(reasoningLevel)配置,写入前自动备份",
   "author": { "name": "夕立" },
   "commands": "./commands",

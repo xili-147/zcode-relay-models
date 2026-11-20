@@ -15,7 +15,7 @@
 
 逆向了 ZCode 桌面端供应商面板:内置 dsh/ccs 的"自动弹模型列表"其实来自 `zcode-builtin.json`(runtime 缓存)里模板的**静态 `builtinModelIds`**,全 App 没有任何动态 `/models` 拉取。`sync-template` 子命令把你的中转站做成同款模板:
 
-- **面板原生勾选**:重启后在"模型设置"点该供应商,像 dsh/ccs 一样勾选模型;
+- **面板原生勾选**:重启后在"模型设置"点该供应商,像 dsh/ccs 一样看到全部模型;**模板里新出现的模型默认关闭**,手动打开开关即可;
 - **思考强度档位**:通过 `providerSiteRules`(`baseUrlMatch + apiTypeMatch` 双重限定,只命中该站)注入官方同款档位,并自动映射请求参数 —— OpenAI 兼容站注入 `reasoning.effort`,Anthropic 兼容站注入 `thinking.adaptive + output_config.effort`;
 - **幂等可恢复**:每次写入自动备份、`revision` +1 防云端刷新覆盖;App 更新后列表消失就重跑一次 `sync-template`。
 

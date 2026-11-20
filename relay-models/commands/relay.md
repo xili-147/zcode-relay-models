@@ -27,7 +27,7 @@ argument-hint: [供应商名|ID|baseUrl|关键词]
      --api-type openai-chat-completions --models "m1,m2" --reasoning 官方全档或gpt
    ```
    (anthropic 站点用 `--api-type anthropic-messages`;要排在列表最上面加 `--position top`。)
-7. **紧接着执行**(面板原生弹出勾选列表的关键一步):
+7. **紧接着执行**(面板原生勾选列表的关键一步;模板里新出现的模型默认关闭,在面板里手动打开开关即可):
    ```bash
    python "$ROOT/scripts/relay_cli.py" sync-template --provider <返回的providerId>
    ```
