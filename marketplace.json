@@ -1,0 +1,16 @@
+{
+  "name": "relay-models-market",
+  "description": "ZCode 中转站模型自动检索插件市场",
+  "plugins": [
+    {
+      "name": "relay-models",
+      "source": "./relay-models",
+      "version": "0.1.0",
+      "description": "自动拉取中转站模型列表,交互式添加/更新 ZCode 供应商与思考强度",
+      "displayName": "Relay Models",
+      "displayName_i18n": { "zh-CN": "中转站模型检索" },
+      "description_i18n": { "zh-CN": "自动拉取中转站 /models 列表并写入供应商配置,含思考强度档位,启动零开销" },
+      "category": "utilities"
+    }
+  ]
+}
