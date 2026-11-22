@@ -7,11 +7,11 @@
 在 ZCode 里添加中转站供应商时,内置供应商(dsh / ccs / Z.ai 等)有现成的模型列表,而自定义中转站要**手动逐个填写模型 ID**,还要自己试思考强度档位。本插件一条 `/relay` 命令:
 
 1. 自动请求中转站的 `/models` 接口拉取全部可用模型;
-2. 编号展示,回 `序号 / 区间(1,3,5-9) / 关键词 / all` 即完成选择;
-3. 交互选择思考强度档位,写入供应商配置;
+2. 自动探测 OpenAI / Anthropic 兼容协议并写入供应商配置;
+3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
-## v0.2.0:模型设置面板原生弹出勾选(重点)
+## v0.3.0:自动发现模型并同步面板勾选(重点)
 
 逆向了 ZCode 桌面端供应商面板:内置 dsh/ccs 的"自动弹模型列表"其实来自 `zcode-builtin.json`(runtime 缓存)里模板的**静态 `builtinModelIds`**,全 App 没有任何动态 `/models` 拉取。`sync-template` 子命令把你的中转站做成同款模板:
 
@@ -25,8 +25,20 @@ python $S sync-template --provider 卡扣ai --use-config   # 不联网,用已存
 python $S sync-template --provider 卡扣ai --reasoning gpt # 自定义档位
 ```
 
-添加/更新供应商后跟着跑一条 `sync-template` 即可;`/relay` 命令已内置这一步。
+添加新供应商时，`/relay` 会自动发现模型并同步模板；不需要手抄模型 ID。重启 ZCode 后，在模型设置面板里像 dsh/ccs 一样勾选。注意：ZCode 原生“添加供应商”表单不会被插件监听，自动发现入口是 `/relay`。
 
+
+### 只填 URL + Key 的新增流程
+
+```text
+/relay
+→ 输入中转站 Base URL
+→ 输入 API Key
+→ 插件请求 /models，自动识别协议和全部模型
+→ 重启 ZCode，在模型设置面板直接勾选模型
+```
+
+模型条目没有明确 reasoning 能力字段时，插件不会猜测或补写 `none/low/medium/high/xhigh/max`；只有远端明确返回的共同档位才会显示。`--name`、`--models`、`--reasoning` 都是高级覆盖，不是必填项。
 ## 特性
 
 - **双协议自动探测**:OpenAI 兼容(`Authorization: Bearer`)与 Anthropic 兼容(`x-api-key`)都支持;baseUrl 不带 `/v1` 也能自动试 `/v1/models`、`/models`、根域名 `/v1/models`

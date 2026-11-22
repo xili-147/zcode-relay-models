@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_CONFIG = Path.home() / ".zcode" / "v2" / "provider_config.json"
 
@@ -125,6 +126,64 @@ def upsert_relay_template(builtin, tid, name, api_type, base, models, values,
         hit["config"] = rule_cfg
 
 
+def provider_name_from_url(url):
+    parsed = urlsplit(normalize_base(url))
+    return parsed.hostname or re.sub(r"^https?://", "", normalize_base(url)).split("/")[0]
+
+
+def sync_template_config(cfg, rule, config_path, models, values):
+    conf = rule["config"]
+    api = conf.get("api", {})
+    base = normalize_base(api.get("baseUrl", ""))
+    api_type = api.get("type", "openai-chat-completions")
+    name = rule.get("providerName") or rule["providerId"]
+    pid = rule["providerId"]
+    if not base:
+        raise ValueError("该供应商无 baseUrl(内置模板供应商跳过)")
+
+    parsed = urlsplit(base)
+    host = (parsed.hostname or "relay").lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", host).strip("-") or "relay"
+    prev = rule.get("templateId")
+    if prev and prev.startswith("relay-"):
+        tid = prev
+    else:
+        import hashlib
+        tid = f"relay-{slug}"
+        taken = set()
+        for p in builtin_json_paths():
+            try:
+                d = load_config(Path(p))
+                for t in d["config"]["providerConfigRules"]["templateRules"]:
+                    taken.add(t.get("templateId"))
+            except Exception:
+                pass
+        if tid in taken:
+            tid += "-" + hashlib.sha1(pid.encode()).hexdigest()[:8]
+
+    written, failed = [], []
+    for p in builtin_json_paths():
+        try:
+            bp = Path(p)
+            d = load_config(bp)
+            upsert_relay_template(d, tid, name, api_type, base, models, values,
+                                  enabled_ids=conf.get("modelOrder", []))
+            d["revision"] = int(d.get("revision", 0)) + 1
+            bak = backup(bp)
+            save_config(bp, d)
+            written.append({"path": str(bp), "backup": str(bak)})
+        except Exception as e:
+            failed.append({"path": str(p), "error": f"{type(e).__name__}: {e}"})
+
+    if not written:
+        raise RuntimeError("未找到可写入的 zcode-builtin.json 模板文件")
+
+    rule["templateId"] = tid
+    bak = backup(config_path)
+    save_config(config_path, cfg)
+    return tid, written, failed, bak
+
+
 def cmd_sync_template(args):
     cfg = load_config(args.config)
     try:
@@ -147,57 +206,25 @@ def cmd_sync_template(args):
         sys.exit(2)
 
     models = split_models(args.models)
-    if not models and not args.use_config:
-        _, models, errs = fetch_models(base, key, "openai"
-                                       if "openai" in api_type else "anthropic",
-                                       args.timeout, args.insecure)
-        if not models:
-            models = []
+    discovered = not models and not args.use_config
+    discovered_levels = None
+    errs = []
+    if discovered:
+        _, models, discovered_levels, _protocol, errs = discover_models(
+            base, key, "openai" if "openai" in api_type else "anthropic",
+            args.timeout, args.insecure)
     if not models:
         models = list(conf.get("modelOrder", []))
     if not models:
         out_json({"ok": False, "error": "拉取失败且无已存模型", "detail": errs})
         sys.exit(2)
 
-    host = re.sub(r"^https?://", "", base).split("/")[0].lower()
-    slug = re.sub(r"[^a-z0-9]+", "-", host).strip("-") or "relay"
-    # 稳定归属:已有 relay- 模板 ID 沿用;否则分配,被占用则 hash(providerId)
-    prev = rule.get("templateId")
-    if prev and prev.startswith("relay-"):
-        tid = prev
+    if args.reasoning:
+        values = resolve_reasoning(args.reasoning)
     else:
-        import hashlib
-        tid = f"relay-{slug}"
-        taken = set()
-        for p in builtin_json_paths():
-            try:
-                d = load_config(Path(p))
-                for t in d["config"]["providerConfigRules"]["templateRules"]:
-                    taken.add(t.get("templateId"))
-            except Exception:
-                pass
-        if tid in taken:
-            tid += "-" + hashlib.sha1(pid.encode()).hexdigest()[:8]
-
-    values = resolve_reasoning(args.reasoning) if args.reasoning else \
-        ["none", "low", "medium", "high", "xhigh", "max"]
-    written, failed = [], []
-    for p in builtin_json_paths():
-        try:
-            bp = Path(p)
-            d = load_config(bp)
-            upsert_relay_template(d, tid, name, api_type, base, models, values,
-                                  enabled_ids=conf.get("modelOrder", []))
-            d["revision"] = int(d.get("revision", 0)) + 1
-            bak = backup(bp)
-            save_config(bp, d)
-            written.append({"path": str(bp), "backup": str(bak)})
-        except Exception as e:
-            failed.append({"path": str(p), "error": f"{type(e).__name__}: {e}"})
-
-    rule["templateId"] = tid
-    bak2 = backup(args.config)
-    save_config(args.config, cfg)
+        values = discovered_levels if discovered else None
+    tid, written, failed, bak2 = sync_template_config(
+        cfg, rule, args.config, models, values)
     out_json({"ok": True, "templateId": tid, "providerId": pid,
               "providerName": name, "models": models, "reasoning": values,
               "written": written, "failed": failed,
@@ -251,7 +278,51 @@ def http_json(url, headers, timeout, insecure=False):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-def parse_model_ids(obj):
+REASONING_KEYS = ("reasoning_levels", "reasoningLevels", "thinking_levels", "thinkingLevels")
+
+
+def _explicit_levels(item):
+    if not isinstance(item, dict):
+        return None
+    for key in REASONING_KEYS:
+        value = item.get(key)
+        if isinstance(value, list):
+            levels = [str(level) for level in value if isinstance(level, (str, int, float))]
+            return levels or None
+    for key in ("capabilities", "reasoning", "thinking"):
+        value = item.get(key)
+        if isinstance(value, dict):
+            levels = _explicit_levels(value)
+            if levels:
+                return levels
+    return None
+
+
+def parse_reasoning_levels(obj):
+    """Return levels explicitly supported by every listed model, never a guessed preset."""
+    if isinstance(obj, dict):
+        items = obj.get("data") or obj.get("models") or []
+        global_levels = _explicit_levels(obj)
+    elif isinstance(obj, list):
+        items = obj
+        global_levels = None
+    else:
+        return None
+
+    model_items = [item for item in items if isinstance(item, dict)]
+    if not model_items:
+        return global_levels
+    per_model = [_explicit_levels(item) for item in model_items]
+    if any(levels is None for levels in per_model):
+        return global_levels
+    common = set(per_model[0])
+    for levels in per_model[1:]:
+        common.intersection_update(levels)
+    ordered = [level for level in per_model[0] if level in common]
+    return ordered or global_levels
+
+
+def parse_model_catalog(obj):
     ids = []
     if isinstance(obj, dict):
         items = obj.get("data") or obj.get("models") or []
@@ -271,7 +342,11 @@ def parse_model_ids(obj):
         if i not in seen:
             seen.add(i)
             uniq.append(i)
-    return uniq
+    return uniq, parse_reasoning_levels(obj)
+
+
+def parse_model_ids(obj):
+    return parse_model_catalog(obj)[0]
 
 
 def model_candidates(base):
@@ -292,11 +367,10 @@ def model_candidates(base):
     return out
 
 
-def fetch_models(base, key, api_type, timeout, insecure=False):
+def fetch_models_detail(base, key, protocol, timeout, insecure=False):
     base = normalize_base(base)
-    if api_type == "anthropic":
+    if protocol == "anthropic":
         headers = {"x-api-key": key or "", "anthropic-version": "2023-06-01",
-                   "Authorization": "Bearer " + (key or ""),
                    "Accept": "application/json"}
     else:
         headers = {"Authorization": "Bearer " + (key or ""),
@@ -304,15 +378,28 @@ def fetch_models(base, key, api_type, timeout, insecure=False):
     errs = []
     for url in model_candidates(base):
         try:
-            ids = parse_model_ids(http_json(url, headers, timeout, insecure))
+            payload = http_json(url, headers, timeout, insecure)
+            ids, levels = parse_model_catalog(payload)
             if ids:
-                return url, ids, None
+                return url, ids, levels, None
             errs.append(f"{url}: 200 但无模型条目")
         except urllib.error.HTTPError as e:
             errs.append(f"{url}: HTTP {e.code}")
         except Exception as e:
             errs.append(f"{url}: {type(e).__name__}: {e}")
-    return None, [], errs
+    return None, [], None, errs
+
+
+def discover_models(base, key, api_type, timeout, insecure=False):
+    """Prefer the configured API protocol, then try the alternate protocol."""
+    preferred = "openai" if api_type == "auto" or "openai" in api_type else "anthropic"
+    errors = []
+    for protocol in (preferred, "anthropic" if preferred == "openai" else "openai"):
+        endpoint, ids, levels, errs = fetch_models_detail(base, key, protocol, timeout, insecure)
+        if ids:
+            return endpoint, ids, levels, protocol, None
+        errors.extend(errs or [])
+    return None, [], None, preferred, errors
 
 
 def find_rule(cfg, ident):
@@ -426,8 +513,8 @@ def cmd_providers(args):
 
 
 def cmd_models(args):
-    url, ids, errs = fetch_models(args.url, args.key, args.api_type,
-                                  args.timeout, args.insecure)
+    url, ids, _levels, _protocol, errs = discover_models(
+        args.url, args.key, args.api_type, args.timeout, args.insecure)
     if args.filter:
         rx = re.compile(args.filter, re.I)
         ids = [i for i in ids if rx.search(i)]
@@ -449,8 +536,23 @@ def cmd_add(args):
                   "error": f"{args.url} 已被供应商 {dup['providerId']}({dup.get('providerName')}) 使用,请用 set-models"})
         sys.exit(2)
     pid = args.provider_id or next_provider_id(cfg)
-    values = resolve_reasoning(args.reasoning)
     models = split_models(args.models)
+    values = None
+    discovered_levels = None
+    if not models:
+        requested_api = args.api_type or "auto"
+        _, models, discovered_levels, detected_protocol, errs = discover_models(
+            args.url, args.key, requested_api, args.timeout, args.insecure)
+        if not models:
+            out_json({"ok": False, "error": "未获取到模型，未创建供应商", "detail": errs or []})
+            sys.exit(2)
+        args.api_type = ("openai-chat-completions" if detected_protocol == "openai"
+                         else "anthropic-messages")
+        values = discovered_levels
+    if args.reasoning:
+        values = resolve_reasoning(args.reasoning)
+    if not args.name:
+        args.name = provider_name_from_url(args.url)
     rule = {
         "providerId": pid,
         "providerName": args.name,
@@ -471,10 +573,11 @@ def cmd_add(args):
         if pid not in order:
             order.append(pid)
     upsert_model_rules(cfg, pid, models, values)
-    bak = backup(args.config)
-    save_config(args.config, cfg)
+    tid, written, failed, bak = sync_template_config(
+        cfg, rule, args.config, models, values)
     out_json({"ok": True, "providerId": pid, "name": args.name,
-              "models": models, "reasoning": values, "backup": str(bak)})
+              "models": models, "reasoning": values, "templateId": tid,
+              "written": written, "failed": failed, "backup": str(bak)})
 
 
 def cmd_set_models(args):
@@ -587,16 +690,18 @@ def main():
     p.set_defaults(fn=cmd_models)
 
     p = sub.add_parser("add", help="新增供应商")
-    p.add_argument("--name", required=True)
+    p.add_argument("--name", default="", help="provider name; defaults to URL hostname")
     p.add_argument("--url", required=True)
     p.add_argument("--key", default="none")
     p.add_argument("--api-type", default="openai-chat-completions",
                    choices=["openai-chat-completions", "anthropic-messages"])
-    p.add_argument("--models", required=True, help="逗号分隔模型ID")
-    p.add_argument("--reasoning", default="gpt",
-                   help="gpt|gemini|full|none|逗号列表(默认 gpt)")
+    p.add_argument("--models", default="", help="逗号分隔模型ID；留空自动拉取全部模型")
+    p.add_argument("--reasoning", default="",
+                   help="gpt|gemini|full|none|comma-separated levels; default uses explicit remote capability")
     p.add_argument("--position", default="bottom", choices=["top", "bottom"])
     p.add_argument("--provider-id", default="")
+    p.add_argument("--timeout", type=int, default=20)
+    p.add_argument("--insecure", action="store_true", help="跳过 TLS 证书校验")
     p.set_defaults(fn=cmd_add)
 
     p = sub.add_parser("set-models", help="更新供应商模型与思考强度")

@@ -26,10 +26,10 @@ python "$ROOT/scripts/relay_cli.py" providers --json
 # 拉取中转站模型列表
 python "$ROOT/scripts/relay_cli.py" models --url https://relay.example.com/v1 --key sk-xxx [--filter 正则] [--insecure] [--json]
 
-# 新增供应商(写 providerOrder + providerRules + modelRules)
+# 新增供应商(空 models 自动发现;同时同步模板)
 python "$ROOT/scripts/relay_cli.py" add --name 显示名 --url https://relay.example.com/v1 \
   --key sk-xxx --api-type openai-chat-completions \
-  --models "m1,m2" --reasoning gpt [--position top]
+  [--models "m1,m2"] [--reasoning gpt] [--position top]
 
 # 更新已有供应商模型(整体替换;--add 追加;--prune 清掉已下架规则;--reasoning 留空沿用现有)
 python "$ROOT/scripts/relay_cli.py" set-models --provider new-provider-7 --models "m1,m2" --prune
@@ -41,7 +41,7 @@ python "$ROOT/scripts/relay_cli.py" sync-template --provider new-provider-7 [--m
 python "$ROOT/scripts/relay_cli.py" test --provider new-provider-7 --model glm-5.3
 ```
 
-`--reasoning` 取值:`gpt` = disabled/low/high/max;`gemini` = disabled/low/medium/high/xhigh/max;`full` 同 gemini;`none` = 不配 optionSpecs;或逗号自定义列表。`sync-template` 留空 = 官方全档 `none/low/medium/high/xhigh/max`,并按 API 协议自动映射请求参数(openai → `reasoning.effort`,anthropic → `thinking.adaptive + output_config.effort`)。
+`--reasoning` 取值:`gpt` = disabled/low/high/max;`gemini` = disabled/low/medium/high/xhigh/max;`full` 同 gemini;`none` = 不配 optionSpecs;或逗号自定义列表。显式传入模型时按该参数配置；`add` 或 `sync-template` 留空模型列表时,只写 `/models` 返回且被所有模型共同支持的 reasoning 等级,没有能力字段就删除该站点 reasoning 规则。`--use-config` 不联网,只使用已存模型列表；无已存模型时直接报错。
 
 ## sync-template 机制(为什么面板能弹列表)
 
@@ -49,16 +49,13 @@ ZCode 面板的"自动弹列表"来自 `zcode-builtin.json`(runtime 缓存:`~/.z
 
 1. 在 `templateRules` 追加中转站模板:`templateId = relay-<域名slug>`,同 slug 被占(同站不同 key/协议)则 hash(providerId) 后缀;
 2. 在 `templateModelRules` 写每个模型的启用规则(**默认关闭**,仅供应商已启用的模型为 true,面板里手动开);
-3. 在 `providerSiteRules` 追加一条按 `baseUrlMatch + apiTypeMatch` 双重限定的思考强度档位规则(`modelMatch` 自动合并,只命中该站)。
+3. 在 `providerSiteRules` 追加一条按 `baseUrlMatch + apiTypeMatch` 双重限定的思考强度档位规则(`modelMatch` 自动合并,只命中该站);没有明确能力时删除该站点旧规则。
 
 同时把该供应商在 `provider_config.json` 里的顶层 `templateId` 绑定到模板。每次写入自动备份,`revision` +1 防云端刷新覆盖。**若 App 更新或云端刷新后列表消失,重跑 `sync-template` 即可恢复。**
 
 ## 流程
-
-1. `providers --json` 摸清现状;参数匹配到已有供应商 → 更新,否则新增。
-2. 新增:要齐 baseUrl / key / 名称三样(一次问全);按 openai 拉 `/models`,失败换 anthropic 头再试。
-3. 模型列表以"序号<TAB>ID"展示,用户用序号/区间/关键词/`all` 选择(推荐 all,面板里可再勾选)。
-4. AskUserQuestion 问思考强度预设(推荐官方全档)。
-5. `add`(或 `set-models`)落盘后**必须跟一条 `sync-template`**,这样面板才有原生勾选列表。
-6. 汇报 providerId、模板 ID、备份路径;提示重启 ZCode 后在模型设置面板勾选。
-7. 大站模型多时用 `--filter` 缩小范围;可选 `test` 逐个测活再让用户挑。
+1. 新增:只向用户索取 Base URL 与 API Key；名称默认按 URL hostname 生成。
+2. `add` 留空 `--models` 时自动请求 `/models`，自动探测 OpenAI / Anthropic 协议；失败就停止，不写空供应商。
+3. reasoning 只接受远端明确声明的共同能力；无能力字段就删除该站点 reasoning 规则，不补全预设。
+4. `add` 自动同步模板；重启 ZCode 后，在模型设置面板里直接勾选已发现模型。
+5. `--name`、`--models`、`--reasoning` 是高级覆盖。ZCode 原生添加供应商表单不会被插件监听，自动发现入口是 `/relay`。

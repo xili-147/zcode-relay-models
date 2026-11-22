@@ -5,7 +5,7 @@
     {
       "name": "relay-models",
       "source": "./relay-models",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "description": "自动拉取中转站模型列表,交互式添加/更新 ZCode 供应商与思考强度",
       "displayName": "Relay Models",
       "displayName_i18n": { "zh-CN": "中转站模型检索" },
