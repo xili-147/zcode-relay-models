@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -129,6 +130,29 @@ class DiscoveryTests(unittest.TestCase):
             {"id": "unknown-b"},
         ]}
         self.assertIsNone(relay_cli.parse_reasoning_levels(payload))
+
+    def test_explicit_empty_capability_does_not_fall_back_to_global_levels(self):
+        payload = {
+            "data": [
+                {"id": "no-reasoning", "reasoning_levels": []},
+                {"id": "reasoning-b", "reasoning_levels": ["low"]},
+            ],
+            "capabilities": {"reasoning_levels": ["low"]},
+        }
+        self.assertEqual(relay_cli.parse_reasoning_levels(payload), [])
+
+    def test_builtin_paths_find_install_template_from_portable_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "ZCode"
+            builtin = root / "resources" / "config" / "provider" / "zcode-builtin.json"
+            builtin.parent.mkdir(parents=True)
+            builtin.write_text("{}", encoding="utf-8")
+            with patch.dict(os.environ, {
+                "RELAY_BUILTIN_DIR": "",
+                "RELAY_ZCODE_INSTALL_DIR": str(root),
+            }, clear=False):
+                paths = relay_cli.builtin_json_paths()
+            self.assertIn(str(builtin.resolve()), paths)
 
     def test_auto_protocol_falls_back_to_anthropic_headers(self):
         DiscoveryHandler.reject_bearer = True

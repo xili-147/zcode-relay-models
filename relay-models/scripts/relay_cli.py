@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import ssl
 import sys
 import time
@@ -36,20 +37,61 @@ ANTHROPIC_REASONING_MAP = ('{\n  "thinking": {\n    "type": "adaptive"\n  },\n'
 
 
 def builtin_json_paths():
-    """生效的 zcode-builtin.json(runtime 各版本缓存 + 出厂兜底)。"""
-    import glob
-    import os
-    env = os.environ.get("RELAY_BUILTIN_DIR")
-    if env:
-        return sorted(glob.glob(str(Path(env) / "*.json")))
-    pats = [
-        str(Path.home() / ".zcode" / "v2" / "runtime" / "provider" / "*" / "*" / "endpoint-*" / "zcode-builtin.json"),
-        r"D:\glm5.3官方harness\ZCode\resources\config\provider\zcode-builtin.json",
-    ]
+    """Find active runtime templates and the installed ZCode template."""
+    paths = []
+    env_dir = os.environ.get("RELAY_BUILTIN_DIR")
+    if env_dir:
+        paths.extend(Path(env_dir).glob("*.json"))
+
+    runtime = Path.home() / ".zcode" / "v2" / "runtime" / "provider"
+    paths.extend(runtime.glob("*/*/endpoint-*/zcode-builtin.json"))
+
+    install_roots = []
+    for key in ("RELAY_ZCODE_INSTALL_DIR", "ZCODE_INSTALL_DIR"):
+        value = os.environ.get(key)
+        if value:
+            install_roots.append(Path(value))
+    for command in ("zcode", "zcode.exe", "ZCode", "ZCode.exe"):
+        executable = shutil.which(command)
+        if executable:
+            install_roots.extend(Path(executable).resolve().parents)
+            break
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    program_files = os.environ.get("PROGRAMFILES")
+    program_files_x86 = os.environ.get("PROGRAMFILES(X86)")
+    app_data = os.environ.get("APPDATA")
+    for base in (local_app_data, program_files, program_files_x86):
+        if base:
+            install_roots.append(Path(base) / "ZCode")
+            install_roots.append(Path(base) / "ZCode Desktop")
+    if local_app_data:
+        install_roots.append(Path(local_app_data) / "Programs")
+    if app_data:
+        install_roots.append(Path(app_data).parent / "Programs")
+
+    for root in install_roots:
+        if not root.exists():
+            continue
+        direct = root / "resources" / "config" / "provider" / "zcode-builtin.json"
+        if direct.is_file():
+            paths.append(direct)
+        try:
+            paths.extend(root.glob("*/resources/config/provider/zcode-builtin.json"))
+            paths.extend(root.glob("*/**/resources/config/provider/zcode-builtin.json"))
+        except OSError:
+            continue
+
+    seen = set()
     out = []
-    for p in pats:
-        out.extend(glob.glob(p))
-    return out
+    for path in paths:
+        try:
+            resolved = str(Path(path).resolve())
+        except OSError:
+            continue
+        if resolved not in seen and Path(resolved).is_file():
+            seen.add(resolved)
+            out.append(resolved)
+    return sorted(out)
 
 
 def reasoning_map_for(api_type):
@@ -272,7 +314,7 @@ def ssl_ctx(insecure):
 
 def http_json(url, headers, timeout, insecure=False):
     req = urllib.request.Request(
-        url, headers={"User-Agent": "zcode-relay-cli/0.1", **headers}
+        url, headers={"User-Agent": "zcode-relay-cli/0.3", **headers}
     )
     with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx(insecure)) as r:
         return json.loads(r.read().decode("utf-8", "replace"))
@@ -288,12 +330,12 @@ def _explicit_levels(item):
         value = item.get(key)
         if isinstance(value, list):
             levels = [str(level) for level in value if isinstance(level, (str, int, float))]
-            return levels or None
+            return levels
     for key in ("capabilities", "reasoning", "thinking"):
         value = item.get(key)
         if isinstance(value, dict):
             levels = _explicit_levels(value)
-            if levels:
+            if levels is not None:
                 return levels
     return None
 
@@ -313,13 +355,15 @@ def parse_reasoning_levels(obj):
     if not model_items:
         return global_levels
     per_model = [_explicit_levels(item) for item in model_items]
-    if any(levels is None for levels in per_model):
+    if all(levels is None for levels in per_model):
         return global_levels
+    if any(levels is None for levels in per_model):
+        return None
     common = set(per_model[0])
     for levels in per_model[1:]:
         common.intersection_update(levels)
     ordered = [level for level in per_model[0] if level in common]
-    return ordered or global_levels
+    return ordered
 
 
 def parse_model_catalog(obj):
@@ -723,7 +767,7 @@ def main():
     p.add_argument("--provider", required=True, help="providerId 或名称")
     p.add_argument("--models", default="", help="逗号分隔覆盖;默认拉 /models")
     p.add_argument("--use-config", action="store_true", help="不联网,直接用已存模型列表")
-    p.add_argument("--reasoning", default="", help="留空=官方全档(none/low/medium/high/xhigh/max);gpt|gemini|none|逗号列表")
+    p.add_argument("--reasoning", default="", help="留空=使用远端明确能力;gpt|gemini|none|逗号列表")
     p.add_argument("--timeout", type=int, default=20)
     p.add_argument("--insecure", action="store_true")
     p.set_defaults(fn=cmd_sync_template)

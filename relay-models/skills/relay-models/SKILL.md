@@ -1,6 +1,6 @@
 ---
 name: relay-models
-description: 添加或更新 ZCode 中转站/OpenAI 兼容/Anthropic 兼容供应商时自动拉取该站点的模型列表,交互式选择模型并配置思考强度,写入 provider_config.json 并同步为面板原生模板(像 dsh/ccs 一样在模型设置里直接勾选)。触发词:中转站、供应商、加模型、模型列表、自动检索、思考强度、面板、勾选、relay、provider、models。
+description: 添加或更新 ZCode 中转站/OpenAI 兼容/Anthropic 兼容供应商时自动拉取该站点的模型列表,写入 provider_config.json 并同步为面板原生模板(像 dsh/ccs 一样在模型设置里直接勾选)。普通新增只需 URL + Key;触发词:中转站、供应商、加模型、模型列表、自动检索、思考强度、面板、勾选、relay、provider、models。
 ---
 
 # relay-models:中转站模型自动检索与供应商配置
@@ -35,7 +35,7 @@ python "$ROOT/scripts/relay_cli.py" add --name 显示名 --url https://relay.exa
 python "$ROOT/scripts/relay_cli.py" set-models --provider new-provider-7 --models "m1,m2" --prune
 
 # 关键:同步为面板原生模板 —— 模型设置里像 dsh/ccs 一样弹列表勾选,并注入思考强度档位
-python "$ROOT/scripts/relay_cli.py" sync-template --provider new-provider-7 [--models "m1,m2"] [--use-config] [--reasoning 官方全档|gpt|none|逗号列表]
+python "$ROOT/scripts/relay_cli.py" sync-template --provider new-provider-7 [--models "m1,m2"] [--use-config] [--reasoning gpt|none|逗号列表]
 
 # 单模型测活(最小补全请求)
 python "$ROOT/scripts/relay_cli.py" test --provider new-provider-7 --model glm-5.3
@@ -45,7 +45,7 @@ python "$ROOT/scripts/relay_cli.py" test --provider new-provider-7 --model glm-5
 
 ## sync-template 机制(为什么面板能弹列表)
 
-ZCode 面板的"自动弹列表"来自 `zcode-builtin.json`(runtime 缓存:`~/.zcode/v2/runtime/provider/<平台>/<版本>/endpoint-*/zcode-builtin.json`,出厂兜底在安装目录 `resources/config/provider/zcode-builtin.json`)的**静态模板** `builtinModelIds` —— 内置 dsh/ccs/Z.ai 就是这样,全 App 没有任何动态 `/models` 拉取。`sync-template` 做三件事(全路径幂等,可反复跑):
+ZCode 面板的"自动弹列表"来自 `zcode-builtin.json`(runtime 缓存:`~/.zcode/v2/runtime/provider/<平台>/<版本>/endpoint-*/zcode-builtin.json`,或自动探测到的 ZCode 安装目录 `resources/config/provider/zcode-builtin.json`)的**静态模板** `builtinModelIds` —— 内置 dsh/ccs/Z.ai 就是这样,全 App 没有任何动态 `/models` 拉取。安装目录也可用 `RELAY_ZCODE_INSTALL_DIR` 或 `ZCODE_INSTALL_DIR` 显式指定。`sync-template` 做三件事(全路径幂等,可反复跑):
 
 1. 在 `templateRules` 追加中转站模板:`templateId = relay-<域名slug>`,同 slug 被占(同站不同 key/协议)则 hash(providerId) 后缀;
 2. 在 `templateModelRules` 写每个模型的启用规则(**默认关闭**,仅供应商已启用的模型为 true,面板里手动开);

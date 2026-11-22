@@ -93,7 +93,7 @@ python $S test --provider new-provider-8 --model m1                        # 单
 | `models` | 拉取中转站模型列表,支持 `--filter 正则`、`--insecure`(自签证书)、`--json` |
 | `add` | 新增供应商,写 `providerOrder` + `providerRules` + `modelRules` 三处 |
 | `set-models` | 更新已有供应商;`--add` 追加、`--prune` 清理已下架模型、`--reasoning` 留空沿用现有档位 |
-| `sync-template` | 把中转站做成面板原生模板(勾选列表 + 思考强度档位),详见 v0.2.0 章节 |
+| `sync-template` | 把中转站做成面板原生模板(勾选列表 + 思考强度档位),详见 v0.3.0 章节 |
 | `test` | 最小补全请求测活,输出回复内容或 HTTP 错误详情 |
 
 ### 思考强度预设
