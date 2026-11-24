@@ -11,7 +11,7 @@
 3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
-## v0.3.0:自动发现模型并同步面板勾选(重点)
+## v0.4.0:原生菜单修改 URL/Key 后自动刷新模型
 
 逆向了 ZCode 桌面端供应商面板:内置 dsh/ccs 的"自动弹模型列表"其实来自 `zcode-builtin.json`(runtime 缓存)里模板的**静态 `builtinModelIds`**,全 App 没有任何动态 `/models` 拉取。`sync-template` 子命令把你的中转站做成同款模板:
 
@@ -25,7 +25,7 @@ python $S sync-template --provider 卡扣ai --use-config   # 不联网,用已存
 python $S sync-template --provider 卡扣ai --reasoning gpt # 自定义档位
 ```
 
-添加新供应商时，`/relay` 会自动发现模型并同步模板；不需要手抄模型 ID。重启 ZCode 后，在模型设置面板里像 dsh/ccs 一样勾选。注意：ZCode 原生“添加供应商”表单不会被插件监听，自动发现入口是 `/relay`。
+插件在会话启动时运行单实例后台监听器。ZCode 原生供应商菜单保存新供应商，或修改已有供应商的 URL/API Key 后，监听器约 2 秒内自动请求 /models 并同步全部候选；旧模型保留原开关，新模型默认关闭供用户选择。更新插件后需先开启一个新会话；若 ZCode 未热加载运行时模板，完整重启后查看刷新结果。监听器首次运行会刷新已有自定义供应商。
 
 
 ### 只填 URL + Key 的新增流程
@@ -35,7 +35,7 @@ python $S sync-template --provider 卡扣ai --reasoning gpt # 自定义档位
 → 输入中转站 Base URL
 → 输入 API Key
 → 插件请求 /models，自动识别协议和全部模型
-→ 重启 ZCode，在模型设置面板直接勾选模型
+→ 监听器自动写入全部模型候选；新模型默认关闭
 ```
 
 模型条目没有明确 reasoning 能力字段时，插件不会猜测或补写 `none/low/medium/high/xhigh/max`；只有远端明确返回的共同档位才会显示。`--name`、`--models`、`--reasoning` 都是高级覆盖，不是必填项。
@@ -45,7 +45,7 @@ python $S sync-template --provider 卡扣ai --reasoning gpt # 自定义档位
 - **思考强度预设**:`gpt`(disabled/low/high/max)、`gemini`(disabled/low/medium/high/xhigh/max)、自定义逗号列表、或不配置
 - **测活**:`test` 子命令用最小补全请求逐个验证模型可用性(能直接报出 key 过期、模型下线)
 - **安全写入**:每次写配置先落 `provider_config.json.bak-relay-<时间戳>` 备份,临时文件 + 原子 `os.replace`
-- **零启动开销**:无 hook、无 MCP、无后台进程;不敲 `/relay` 时只是几个 Markdown 文件,不参与启动
+- **自动刷新**:会话启动后在后台监测供应商配置，仅 URL/API Key 变化时请求模型目录；新模型默认关闭，原有选择保留
 - **纯 Python 标准库**:无第三方依赖,Python 3.8+ 即可
 
 ## 安装
@@ -93,7 +93,7 @@ python $S test --provider new-provider-8 --model m1                        # 单
 | `models` | 拉取中转站模型列表,支持 `--filter 正则`、`--insecure`(自签证书)、`--json` |
 | `add` | 新增供应商,写 `providerOrder` + `providerRules` + `modelRules` 三处 |
 | `set-models` | 更新已有供应商;`--add` 追加、`--prune` 清理已下架模型、`--reasoning` 留空沿用现有档位 |
-| `sync-template` | 把中转站做成面板原生模板(勾选列表 + 思考强度档位),详见 v0.3.0 章节 |
+| `sync-template` | 手动把中转站做成面板原生模板(勾选列表 + 思考强度档位) |
 | `test` | 最小补全请求测活,输出回复内容或 HTTP 错误详情 |
 
 ### 思考强度预设

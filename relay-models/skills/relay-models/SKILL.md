@@ -58,4 +58,4 @@ ZCode 面板的"自动弹列表"来自 `zcode-builtin.json`(runtime 缓存:`~/.z
 2. `add` 留空 `--models` 时自动请求 `/models`，自动探测 OpenAI / Anthropic 协议；失败就停止，不写空供应商。
 3. reasoning 只接受远端明确声明的共同能力；无能力字段就删除该站点 reasoning 规则，不补全预设。
 4. `add` 自动同步模板；重启 ZCode 后，在模型设置面板里直接勾选已发现模型。
-5. `--name`、`--models`、`--reasoning` 是高级覆盖。ZCode 原生添加供应商表单不会被插件监听，自动发现入口是 `/relay`。
+5. `--name`、`--models`、`--reasoning` 是高级覆盖。后台监听原生供应商菜单保存的 URL/API Key 变化，并自动刷新候选模型；新模型默认关闭，原有开关保留。

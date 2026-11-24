@@ -11,6 +11,7 @@
   test        用最小补全请求测活某个模型
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -173,7 +174,8 @@ def provider_name_from_url(url):
     return parsed.hostname or re.sub(r"^https?://", "", normalize_base(url)).split("/")[0]
 
 
-def sync_template_config(cfg, rule, config_path, models, values):
+def sync_template_config(cfg, rule, config_path, models, values, enabled_ids=None,
+                         expected_config_hash=None):
     conf = rule["config"]
     api = conf.get("api", {})
     base = normalize_base(api.get("baseUrl", ""))
@@ -190,7 +192,6 @@ def sync_template_config(cfg, rule, config_path, models, values):
     if prev and prev.startswith("relay-"):
         tid = prev
     else:
-        import hashlib
         tid = f"relay-{slug}"
         taken = set()
         for p in builtin_json_paths():
@@ -209,7 +210,8 @@ def sync_template_config(cfg, rule, config_path, models, values):
             bp = Path(p)
             d = load_config(bp)
             upsert_relay_template(d, tid, name, api_type, base, models, values,
-                                  enabled_ids=conf.get("modelOrder", []))
+                                  enabled_ids=(conf.get("modelOrder", [])
+                                               if enabled_ids is None else enabled_ids))
             d["revision"] = int(d.get("revision", 0)) + 1
             bak = backup(bp)
             save_config(bp, d)
@@ -221,6 +223,10 @@ def sync_template_config(cfg, rule, config_path, models, values):
         raise RuntimeError("未找到可写入的 zcode-builtin.json 模板文件")
 
     rule["templateId"] = tid
+    if expected_config_hash is not None:
+        current_hash = hashlib.sha256(Path(config_path).read_bytes()).hexdigest()
+        if current_hash != expected_config_hash:
+            raise RuntimeError("provider_config.json changed during model discovery")
     bak = backup(config_path)
     save_config(config_path, cfg)
     return tid, written, failed, bak
@@ -291,7 +297,12 @@ def save_config(path, data):
 
 
 def backup(path):
-    b = path.with_name(path.name + ".bak-relay-" + time.strftime("%Y%m%d%H%M%S"))
+    stamp = time.strftime("%Y%m%d%H%M%S")
+    b = path.with_name(path.name + ".bak-relay-" + stamp)
+    suffix = 1
+    while b.exists():
+        b = path.with_name(path.name + f".bak-relay-{stamp}-{suffix}")
+        suffix += 1
     b.write_bytes(path.read_bytes())
     return b
 

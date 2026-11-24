@@ -5,11 +5,11 @@
     {
       "name": "relay-models",
       "source": "./relay-models",
-      "version": "0.3.0",
-      "description": "自动拉取中转站模型列表,交互式添加/更新 ZCode 供应商与思考强度",
+      "version": "0.4.0",
+      "description": "自动发现中转站模型，并在原生菜单修改 URL 或 API Key 后刷新候选",
       "displayName": "Relay Models",
       "displayName_i18n": { "zh-CN": "中转站模型检索" },
-      "description_i18n": { "zh-CN": "自动拉取中转站 /models 列表并写入供应商配置,含思考强度档位,启动零开销" },
+      "description_i18n": { "zh-CN": "监测中转站供应商 URL 与 API Key 变更，自动刷新模型列表并同步面板候选" },
       "category": "utilities"
     }
   ]
