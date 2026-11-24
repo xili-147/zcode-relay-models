@@ -11,6 +11,10 @@
 3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
+## v0.4.3:register automatic refresh hooks
+
+Fix the ZCode manifest omission for `hooks/hooks.json`; the model watcher now starts with each session.
+
 ## v0.4.2:同步供应商模型清单
 
 发现模型后同时更新供应商的 `modelOrder`、`personalModelIds` 和面板模板，保留原模型开关，新模型默认关闭。SessionStart 钩子不筛选启动原因，兼容 startup、resume、fork 等会话入口。
