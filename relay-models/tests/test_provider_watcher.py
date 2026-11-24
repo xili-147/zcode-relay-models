@@ -11,6 +11,13 @@ import provider_watcher
 
 
 class ProviderWatcherTests(unittest.TestCase):
+    def test_session_start_hook_matches_all_start_reasons(self):
+        hooks_path = ROOT / "hooks" / "hooks.json"
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+        session_start = hooks["hooks"]["SessionStart"]
+        self.assertTrue(session_start)
+        self.assertTrue(all("matcher" not in entry for entry in session_start))
+
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)

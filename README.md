@@ -11,6 +11,10 @@
 3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
+## v0.4.1:修复新会话未启动自动刷新
+
+启动监听器的 SessionStart 钩子不再筛选启动原因，兼容 ZCode 的 startup、resume、fork 等会话入口。安装更新后，新会话会启动后台监听器。
+
 ## v0.4.0:原生菜单修改 URL/Key 后自动刷新模型
 
 逆向了 ZCode 桌面端供应商面板:内置 dsh/ccs 的"自动弹模型列表"其实来自 `zcode-builtin.json`(runtime 缓存)里模板的**静态 `builtinModelIds`**,全 App 没有任何动态 `/models` 拉取。`sync-template` 子命令把你的中转站做成同款模板:

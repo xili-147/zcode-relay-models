@@ -1,6 +1,6 @@
 {
   "name": "relay-models",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "自动发现中转站模型；原生菜单修改 URL 或 API Key 后自动刷新模型候选",
   "author": { "name": "夕立" },
   "commands": "./commands",
