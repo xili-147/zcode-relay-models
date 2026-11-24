@@ -81,36 +81,7 @@ def _is_refreshable(rule):
 
 
 def _update_model_rules(cfg, rule, models, reasoning_levels):
-    provider_id = rule["providerId"]
-    model_config = cfg["config"]["modelConfigRules"]
-    all_rules = model_config["providerModelRules"]
-    provider_rules = [r for r in all_rules if r.get("providerId") == provider_id]
-    previous = {r.get("modelId"): r for r in provider_rules}
-    old_order = set(rule["config"].get("modelOrder", []))
-    enabled_ids = []
-    kept = [r for r in all_rules if r.get("providerId") != provider_id]
-
-    for model_id in models:
-        entry = previous.get(model_id, {
-            "providerId": provider_id, "modelId": model_id, "config": {},
-        })
-        config = entry.setdefault("config", {})
-        config["enabled"] = config.get("enabled", model_id in old_order)
-        specs = config.setdefault("optionSpecs", {})
-        if reasoning_levels:
-            specs["reasoningLevel"] = {"values": list(reasoning_levels)}
-        else:
-            specs.pop("reasoningLevel", None)
-        if not specs:
-            config.pop("optionSpecs", None)
-        if config["enabled"]:
-            enabled_ids.append(model_id)
-        kept.append(entry)
-
-    model_config["providerModelRules"] = kept
-    rule["config"]["modelOrder"] = list(models)
-    rule["config"]["personalModelIds"] = list(models)
-    return enabled_ids
+    return relay_cli.sync_provider_model_rules(cfg, rule, models, reasoning_levels)
 
 
 def refresh_changed_providers(config_path=DEFAULT_CONFIG, state_path=None, now=None):

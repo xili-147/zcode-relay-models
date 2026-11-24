@@ -11,9 +11,9 @@
 3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
-## v0.4.1:修复新会话未启动自动刷新
+## v0.4.2:同步供应商模型清单
 
-启动监听器的 SessionStart 钩子不再筛选启动原因，兼容 ZCode 的 startup、resume、fork 等会话入口。安装更新后，新会话会启动后台监听器。
+发现模型后同时更新供应商的 `modelOrder`、`personalModelIds` 和面板模板，保留原模型开关，新模型默认关闭。SessionStart 钩子不筛选启动原因，兼容 startup、resume、fork 等会话入口。
 
 ## v0.4.0:原生菜单修改 URL/Key 后自动刷新模型
 

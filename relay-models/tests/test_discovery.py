@@ -227,6 +227,31 @@ class DiscoveryTests(unittest.TestCase):
                 ["low", "high"],
             )
 
+    def test_sync_template_updates_provider_model_list_and_preserves_enabled_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_path = Path(td) / "provider_config.json"
+            builtin_path = Path(td) / "zcode-builtin.json"
+            config = self.config()
+            self.add_provider(config, models=[])
+            config["config"]["modelConfigRules"]["providerModelRules"] = [{
+                "providerId": "new-provider", "modelId": "reasoning-a",
+                "config": {"enabled": True},
+            }]
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+            self.builtin(builtin_path)
+            args = self.sync_args(config_path)
+            with patch.object(relay_cli, "builtin_json_paths", return_value=[builtin_path]):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    relay_cli.cmd_sync_template(args)
+
+            saved = json.loads(config_path.read_text(encoding="utf-8"))
+            rule = saved["config"]["providerConfigRules"]["providerRules"][0]
+            self.assertEqual(rule["config"]["modelOrder"], ["reasoning-a", "plain-b"])
+            self.assertEqual(rule["config"]["personalModelIds"], ["reasoning-a", "plain-b"])
+            models = saved["config"]["modelConfigRules"]["providerModelRules"]
+            enabled = {entry["modelId"]: entry["config"]["enabled"] for entry in models}
+            self.assertEqual(enabled, {"reasoning-a": True, "plain-b": False})
+
     def test_add_without_capability_metadata_does_not_write_reasoning_rule(self):
         DiscoveryHandler.response = {"data": [{"id": "plain-a"}, {"id": "plain-b"}]}
         with tempfile.TemporaryDirectory() as td:

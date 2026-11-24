@@ -271,8 +271,9 @@ def cmd_sync_template(args):
         values = resolve_reasoning(args.reasoning)
     else:
         values = discovered_levels if discovered else None
+    enabled_ids = sync_provider_model_rules(cfg, rule, models, values)
     tid, written, failed, bak2 = sync_template_config(
-        cfg, rule, args.config, models, values)
+        cfg, rule, args.config, models, values, enabled_ids=enabled_ids)
     out_json({"ok": True, "templateId": tid, "providerId": pid,
               "providerName": name, "models": models, "reasoning": values,
               "written": written, "failed": failed,
@@ -553,6 +554,41 @@ def upsert_model_rules(cfg, provider_id, models, values, prune=False,
             specs.pop("reasoningLevel", None)
             if not specs:
                 conf.pop("optionSpecs", None)
+
+
+def sync_provider_model_rules(cfg, rule, models, values):
+    provider_id = rule["providerId"]
+    provider_config = rule["config"]
+    model_config = cfg["config"]["modelConfigRules"]
+    all_rules = model_config["providerModelRules"]
+    existing = {entry.get("modelId"): entry for entry in all_rules
+                if entry.get("providerId") == provider_id}
+    old_order = set(provider_config.get("modelOrder", []))
+    enabled_ids = []
+    model_config["providerModelRules"] = [
+        entry for entry in all_rules if entry.get("providerId") != provider_id
+    ]
+
+    for model_id in models:
+        entry = existing.get(model_id, {
+            "providerId": provider_id, "modelId": model_id, "config": {},
+        })
+        config = entry.setdefault("config", {})
+        config["enabled"] = config.get("enabled", model_id in old_order)
+        specs = config.setdefault("optionSpecs", {})
+        if values:
+            specs["reasoningLevel"] = {"values": list(values)}
+        else:
+            specs.pop("reasoningLevel", None)
+        if not specs:
+            config.pop("optionSpecs", None)
+        if config["enabled"]:
+            enabled_ids.append(model_id)
+        model_config["providerModelRules"].append(entry)
+
+    provider_config["modelOrder"] = list(models)
+    provider_config["personalModelIds"] = list(models)
+    return enabled_ids
 
 
 def cmd_providers(args):
