@@ -325,11 +325,24 @@ def ssl_ctx(insecure):
 
 
 def http_json(url, headers, timeout, insecure=False):
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "zcode-relay-cli/0.3", **headers}
-    )
-    with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx(insecure)) as r:
-        return json.loads(r.read().decode("utf-8", "replace"))
+    request_headers = {"User-Agent": "zcode-relay-cli/0.3", **headers}
+    request = urllib.request.Request(url, headers=request_headers)
+    context = ssl_ctx(insecure)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            return json.loads(response.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError:
+        raise
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
+        parsed = urlsplit(url)
+        if (not urllib.request.getproxies().get(parsed.scheme)
+                or urllib.request.proxy_bypass(parsed.netloc)):
+            raise
+    direct = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
+    request = urllib.request.Request(url, headers=request_headers)
+    with direct.open(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8", "replace"))
 
 
 REASONING_KEYS = ("reasoning_levels", "reasoningLevels", "thinking_levels", "thinkingLevels")

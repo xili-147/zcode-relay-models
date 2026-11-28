@@ -11,6 +11,12 @@
 3. 自动同步面板模板，重启后可在模型设置中直接勾选;
 4. 写入前自动备份 `provider_config.json`,原子替换,绝不写坏。
 
+## v0.4.4:代理连接失败后恢复模型刷新
+
+请求模型目录时沿用系统代理；代理连接失败或握手超时后，对同一地址直连重试一次，保留原鉴权与证书校验。HTTP 401/403 等服务端错误不触发直连重试。两种连接都失败时保留原模型列表，后台稍后重试。
+
+刷新依据是供应商 URL、API Key、API 类型的变化，以及 `/models` 返回的目录。目录不等于逐模型调用成功；插件不会自动切换聊天模型。新候选默认关闭，可在模型设置中自行启用。
+
 ## v0.4.3:register automatic refresh hooks
 
 Fix the ZCode manifest omission for `hooks/hooks.json`; the model watcher now starts with each session.
@@ -33,7 +39,7 @@ python $S sync-template --provider 卡扣ai --use-config   # 不联网,用已存
 python $S sync-template --provider 卡扣ai --reasoning gpt # 自定义档位
 ```
 
-插件在会话启动时运行单实例后台监听器。ZCode 原生供应商菜单保存新供应商，或修改已有供应商的 URL/API Key 后，监听器约 2 秒内自动请求 /models 并同步全部候选；旧模型保留原开关，新模型默认关闭供用户选择。更新插件后需先开启一个新会话；若 ZCode 未热加载运行时模板，完整重启后查看刷新结果。监听器首次运行会刷新已有自定义供应商。
+插件在会话启动时运行单实例后台监听器。ZCode 原生供应商菜单保存新供应商，或修改已有供应商的 URL/API Key 后，监听器每轮检查间隔约 2 秒，发现变化后请求 /models 并同步全部候选；刷新耗时取决于网络和前面供应商的请求。旧模型保留原开关，新模型默认关闭供用户选择。更新插件后需完整退出并重新打开 ZCode，再开启一个新会话，使旧版监听器退出并加载新版本。监听器首次运行会刷新已有自定义供应商。
 
 
 ### 只填 URL + Key 的新增流程
@@ -121,7 +127,9 @@ python $S test --provider new-provider-8 --model m1                        # 单
 - `config.providerConfigRules.providerRules` — 供应商本体(key / baseUrl / 协议 / 模型)
 - `config.modelConfigRules.providerModelRules` — 每模型的启用状态与 `optionSpecs.reasoningLevel`
 
-ZCode 桌面端不会热加载外部改动,写入后若模型面板没变化,**重启 ZCode** 即可。
+新版 ZCode 会监测配置变化。写入后可重新打开模型设置检查候选；旧版若未加载改动，再完整重启 ZCode。模型设置中的候选开关与聊天中的可选模型是两层：供应商和目标模型均启用后，才会进入聊天选择列表。
+
+监听状态保存在 `ZCODE_PLUGIN_DATA/provider-watcher-state.json`。当前 ZCode 通常将插件数据目录设为 `~/.zcode/cli/plugins/data/relay-models@relay-models-market`，排查时以实际钩子环境或监听进程的 `--state` 参数为准。
 
 ## 常见问题
 
